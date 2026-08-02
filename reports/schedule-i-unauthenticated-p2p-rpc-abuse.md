@@ -113,6 +113,16 @@ the player moves. That footage supports the reported dialogue behavior and is
 consistent with NPC control, but it does not identify the exact RPC. The clip
 does not show the reported balance change or the original join sequence.
 
+At the start of the clip, the controlled dialogue visibly promotes five
+Instagram accounts. In separately supplied profile screenshots, one of those
+accounts uses the display name `vee`, matching the persona in the game's lobby
+log. This strengthens the correlation between the logged lobby participant and
+the party controlling or promoting content through the dialogue. It does not
+prove that the same person controlled both accounts, identify a real person, or
+rule out promotion or impersonation of an unrelated account. The profile
+screenshots contain unnecessary personal information, so I retain them only in
+the private evidence archive.
+
 The accompanying log contains `Player join/leave: vee` from
 `SteamLobbyService.PlayerEnterOrLeave(LobbyChatUpdate_t)`. That callback carries
 the lobby ID, changed SteamID, actor SteamID, and member-state flags. The game
