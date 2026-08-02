@@ -5,68 +5,50 @@ admission flaw.
 
 https://github.com/user-attachments/assets/5ccbcb0d-00bd-40c6-bf06-567fb1dcb196
 
-[Incident clip](evidence/streamer-incident.mp4) |
-[Security write-up](reports/schedule-i-unauthenticated-p2p-rpc-abuse.md)
+[Security write-up](reports/schedule-i-unauthenticated-p2p-rpc-abuse.md) |
+[Evidence status](EVIDENCE.md) |
+[Controlled reproduction](tests/Repro/README.md) |
+[Configuration](CONFIGURATION.md) |
+[Incident clip](evidence/streamer-incident.mp4)
 
 ## Confirmed behavior
 
-In a controlled two-client Mono test, a client that was not in the host's
-lobby used Schedule I's direct connection path and reached an authenticated,
-loaded game session. FishNet had no configured authenticator, and the game did
-not make a host-controlled admission decision before authentication.
+On Schedule I `0.4.6f11 Alternate`, a controlled client outside the host's
+lobby used the direct `LoadAsClient` path and reached an authenticated, loaded
+game session. The host made no game-level admission decision before FishNet
+authenticated the peer.
 
-The same controlled client reached non-owner RPC paths for shared money,
-world-space dialogue, and NPC targeting. Two independent runs changed the
-runtime balance from `0` to `-123.45` and persisted the result to the isolated
-test save.
+The same controlled client reached shared-money, native world-space dialogue,
+and NPC-targeting RPC paths. Two independent runs changed the isolated test
+save's online balance from `0` to `-123.45` and persisted the result.
 
-The test used GSE, a Steam-compatible emulator. It proves the game and FishNet
-path, but it does not prove that an unrelated account can join a FriendsOnly
-lobby through Valve. Valve documents FriendsOnly lobbies as joinable by friends
-and invitees. That live two-account lobby control remains separate.
+These results used distinct GSE identities on isolated Mono game instances.
+They prove the Schedule I, FishySteamworks, FishNet, and game-RPC path under a
+Steam-compatible emulator. They do not prove that Valve permits an unrelated
+account to enter a FriendsOnly lobby. A live Valve host control confirmed the
+actual `CreateLobby(k_ELobbyTypeFriendsOnly, 4)` call, but the unrelated-client
+half remains deferred.
 
 ## What the mod does
 
 S1 Net Guard checks the transport SteamID before FishNet authenticates a remote
-connection. By default, it allows:
+connection. By default, it admits the local host, a current-lobby Steam friend,
+or a SteamID the host explicitly allowlisted. It rejects direct non-members,
+untrusted lobby members, invalid identities, and unverifiable lobby state.
 
-- the local host;
-- an immediate Steam friend who is also in the current lobby; or
-- a SteamID the host explicitly allowlisted.
+Optional defense-in-depth patches block the reviewed money, free-text dialogue,
+and NPC-targeting RPCs. They are disabled by default because the base game does
+not expose enough role information to preserve every legitimate multiplayer
+action automatically.
 
-The admission gate rejects other remote peers before player creation. Optional
-RPC guards block the reviewed money, free-text dialogue, and NPC-targeting
-paths. Those guards are off by default because they can also block legitimate
-actions from invited players.
+Controlled negative tests confirmed both layers:
 
-Controlled negative tests confirmed that the admission gate rejects a direct
-non-member before FishNet authentication. A separate allowlisted-client test
-confirmed that the RPC guards block all three reviewed requests and preserve
-the runtime and saved balance.
+- The admission gate rejected a direct non-member before FishNet
+  authentication.
+- An explicitly allowlisted peer connected, but the RPC guards blocked all
+  three requests and kept the runtime and saved balance at `0`.
 
-## Recommended game fix
-
-The game should attach a session-aware FishNet `Authenticator` before starting
-the server. It must authorize the transport-verified SteamID before FishNet
-enters its authenticated-client path. Lobby discovery and transport admission
-must remain separate decisions. High-risk RPCs must also validate the sender's
-session role and authority over the requested action.
-
-The [security write-up](reports/schedule-i-unauthenticated-p2p-rpc-abuse.md)
-contains the proposed game-side control flow and regression cases.
-
-## Validation status
-
-- Controlled direct-admission reproduction: passed on Mono `0.4.6f11 Alternate`.
-- Controlled money, dialogue, NPC-control, and save-impact reproduction: passed twice on Mono.
-- Admission and RPC-defense negative controls: passed on Mono.
-- Mono and IL2CPP builds: zero warnings and errors.
-- Mono and IL2CPP real startup checks: passed.
-- Mono and IL2CPP game-surface checks: 12 targets passed.
-- Admission policy verifier: 12 scenarios passed.
-- Live Valve FriendsOnly test with two unrelated Steam accounts: not yet run.
-
-## Build
+## Install
 
 Copy `local.build.props.example` to `local.build.props`, set the local game
 paths, and build the matching runtime:
@@ -76,6 +58,38 @@ dotnet build S1NetGuard.csproj -c Mono -p:AutomateLocalDeployment=false
 dotnet build S1NetGuard.csproj -c Il2cpp -p:AutomateLocalDeployment=false
 ```
 
-This repository does not publish binaries. It also omits packet-construction
-details, proprietary game assemblies, decompiled dumps, generated wrappers,
-test saves, and local reproduction logs.
+Copy the matching output into the game's `Mods` directory:
+
+```text
+bin/Mono/netstandard2.1/S1NetGuard_Mono.dll
+bin/Il2cpp/net6.0/S1NetGuard_Il2Cpp.dll
+```
+
+The admission gate is enabled with fail-closed defaults. Hosts who invite a
+non-friend must add that SteamID64 to `AllowedSteamIds` or explicitly enable
+the broader lobby-member compatibility mode. See [CONFIGURATION.md](CONFIGURATION.md).
+
+## Recommended game fix
+
+The game should attach a session-aware FishNet `Authenticator` before starting
+the server. That authenticator must approve the transport-verified SteamID
+before FishNet reaches `ClientAuthenticated`. High-risk RPCs must separately
+validate the sender's session role and authority over the requested action.
+
+The [security write-up](reports/schedule-i-unauthenticated-p2p-rpc-abuse.md#remediation)
+contains the proposed control flow and regression matrix.
+
+## Validation status
+
+- GSE direct-admission reproduction: passed on Mono `0.4.6f11 Alternate`.
+- GSE money, dialogue, NPC-control, and save-impact reproduction: passed twice.
+- GSE admission and RPC-defense controls: passed.
+- Mono and IL2CPP builds, startup checks, and reviewed game surfaces: passed.
+- Admission-policy verifier: 12 scenarios passed.
+- Live Valve FriendsOnly, direct-client, and impact matrix: deferred until two
+  unrelated Steam accounts can run concurrently.
+
+Run the public controlled harness from [tests/Repro](tests/Repro/README.md).
+Raw logs, real SteamIDs, lobby IDs, emulator files, copied game installs, test
+saves, proprietary assemblies, and generated IL2CPP wrappers remain outside
+Git.

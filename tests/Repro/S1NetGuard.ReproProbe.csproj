@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>S1NetGuard.AdmissionRepro</AssemblyName>
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <ManagedPath>$(GamePath)\Schedule I_Data\Managed</ManagedPath>
+    <MelonPath>$(GamePath)\MelonLoader\net35</MelonPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="0Harmony" HintPath="$(MelonPath)\0Harmony.dll" Private="false" />
+    <Reference Include="Assembly-CSharp" HintPath="$(ManagedPath)\Assembly-CSharp.dll" Private="false" />
+    <Reference Include="FishNet.Runtime" HintPath="$(ManagedPath)\FishNet.Runtime.dll" Private="false" />
+    <Reference Include="MelonLoader" HintPath="$(MelonPath)\MelonLoader.dll" Private="false" />
+    <Reference Include="Steamworks.NET" HintPath="$(ManagedPath)\com.rlabrecque.steamworks.net.dll" Private="false" />
+    <Reference Include="UnityEngine.CoreModule" HintPath="$(ManagedPath)\UnityEngine.CoreModule.dll" Private="false" />
+  </ItemGroup>
+
+  <Target Name="ValidateGamePath" BeforeTargets="ResolveReferences">
+    <Error Condition="'$(GamePath)' == ''"
+           Text="Set GamePath to a local Schedule I Mono installation." />
+    <Error Condition="!Exists('$(ManagedPath)\Assembly-CSharp.dll') or !Exists('$(MelonPath)\MelonLoader.dll')"
+           Text="GamePath must point to a Mono Schedule I installation with MelonLoader." />
+  </Target>
+</Project>

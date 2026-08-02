@@ -3,6 +3,9 @@ obj/
 local.build.props
 artifacts/
 .codex-tmp/
+/tests/Repro/live-valve-bundle/
+/tests/Repro/live-valve-evidence/
+/tests/Repro/live-validator-tests-v2/
 /reports/message-to-leo.md
 *.dll
 *.pdb

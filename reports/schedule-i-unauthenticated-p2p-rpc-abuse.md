@@ -2,17 +2,16 @@
 
 ## Executive Summary
 
-I confirmed, in controlled two-client testing with distinct emulated Steam
-identities, that a Schedule I client can use the direct `LoadAsClient` path to
-join a host while it is not a member of
-the host's lobby. The host accepted the transport connection, FishNet
-auto-authenticated it, and the client spawned a local player and loaded the
-game. This is an admission-control failure: a transport-identified peer
-crosses into the game session without a host-controlled authorization decision.
+I confirmed the game-level path in a controlled two-client GSE/Goldberg test
+with distinct emulated Steam identities. A Schedule I client used the direct
+`LoadAsClient` path while it was not a member of the host's lobby. The host
+accepted the transport connection, FishNet auto-authenticated it, and the
+client spawned a local player and loaded the game. The tested path therefore
+admits a transport-identified peer without a host-controlled authorization
+decision.
 
-The primary effect gives an unauthorized peer session entry. Once the server admits
-that peer, the peer reaches server RPCs intended for game participants. The
-controlled tests then exercised three high-risk paths: a shared-money mutation,
+Once the server admits that peer, it can reach server RPCs intended for game
+participants. The controlled tests exercised a shared-money mutation,
 free-text world-space dialogue, and NPC target control. The money test changed
 the host's runtime balance from `0` to `-123.45` and persisted `-123.45` in two
 separate successful runs.
@@ -21,7 +20,11 @@ I reviewed the controlled logs, the repro harness, the targeted defensive
 patches, and the current Mono surface. The successful tests used Schedule I
 `0.4.6f11 Alternate` on Mono with `Assembly-CSharp.dll` SHA-256
 `EFF38A4C5A176F27694721F29F3C06D9384CA123CEC8D325939C967520A857EE`.
-I did not test a live Valve backend or a public session.
+I later ran the host half against Valve. That control captured the actual
+`CreateLobby(k_ELobbyTypeFriendsOnly, 4)` API call, Valve's successful host
+callbacks, and a one-member final lobby. I did not run a live Valve remote
+peer, `JoinLobby` attempt, direct admission, RPC, or save-impact chain. I did
+not test a public session.
 
 The evidence supports High severity for multiplayer session and save integrity.
 It does not show remote code execution, host operating-system compromise, or
@@ -55,13 +58,18 @@ lobby. See the
 the archived
 [FishNet ServerManager documentation](https://web.archive.org/web/20240324100202/https://fish-networking.gitbook.io/docs/fishnet-building-blocks/components/managers/server-manager),
 and FishNet's
-[no-authenticator branch](https://github.com/FirstGearGames/FishNet/blob/main/Assets/FishNet/Runtime/Managing/Server/ServerManager.cs#L581-L587).
+[no-authenticator branch](https://github.com/FirstGearGames/FishNet/blob/af51f34ddf4d2c1cea5f3f0cb3eaec1c6aaf2a35/Assets/FishNet/Runtime/Managing/Server/ServerManager.cs#L533-L540).
 
-GSE 08.33.09.23 is a controlled Steam-compatible emulator and does not prove
-Valve FriendsOnly backend behavior. The live Valve two-account FriendsOnly
-join question remains unverified. The controlled result is narrower and still
-material: after the harness created a one-member FriendsOnly lobby, a
-non-member direct client reached an authenticated, loaded game session.
+GSE/Goldberg 08.33.09.23 is the backend used for the automated two-client
+tests. It lets us exercise the real Schedule I, FishySteamworks, FishNet, and
+game-RPC code with distinct local identities, but it does not prove Valve's
+FriendsOnly policy or Valve P2P behavior. The live Valve host-only control
+confirms the game's actual FriendsOnly API call and host callbacks. The remote
+half remains unverified.
+
+The confirmed GSE/Goldberg result is narrower and still material. After the
+harness created a one-member FriendsOnly lobby, a non-member direct client
+reached an authenticated, loaded game session without calling `JoinLobby`.
 
 ## Vulnerability Details
 
@@ -93,6 +101,10 @@ and completed load. The reviewed repro harness also instruments the FishNet
 remote-connection and `ClientAuthenticated` lifecycle methods, so we can place
 the missing authorization check before the latter transition.
 
+The public controlled harness is under [`tests/Repro`](../tests/Repro/README.md).
+It uses the native `LoadAsClient` entry point and records lobby membership on
+both sides. It does not construct packets or expose serializer layouts.
+
 The post-entry impact surface includes these reviewed non-owner RPC paths:
 
 | Path | Controlled effect |
@@ -123,14 +135,17 @@ rule out promotion or impersonation of an unrelated account. The profile
 screenshots contain unnecessary personal information, so I retain them only in
 the private evidence archive.
 
+This incident correlation is neither GSE/Goldberg reproduction evidence nor
+proof of a live Valve admission path.
+
 The accompanying log contains `Player join/leave: vee` from
 `SteamLobbyService.PlayerEnterOrLeave(LobbyChatUpdate_t)`. That callback carries
 the lobby ID, changed SteamID, actor SteamID, and member-state flags. The game
 logs only the persona name. Without the omitted flags, the line cannot tell us
-whether the state indicated entry, leave, disconnect, or removal. If a full callback
-shows `k_EChatMemberStateChangeEntered`, then it proves lobby membership changed;
-it still does not explain whether Valve treated the account as a friend or
-invitee, or whether another component changed the lobby type.
+whether the state indicated entry, leave, disconnect, or removal. If a full
+callback shows `k_EChatMemberStateChangeEntered`, it proves lobby membership
+changed. It still does not explain whether Valve treated the account as a
+friend or invitee, or whether another component changed the lobby type.
 
 [Streamer incident clip](../evidence/streamer-incident.mp4)
 
@@ -151,6 +166,8 @@ assertions. It recorded all three paths, changed the host runtime balance from
 identity pair: all three paths ran, the runtime balance became `-123.45`, and
 the save contained `-123.45`.
 
+### Excluded diagnostic runs
+
 The prior run `20260802-080236-27d7eacc` is not an accepted money-impact
 result. The save contained `-123.45`, but the probe sampled the server RPC stage
 before the observer-side balance mutation and recorded the wrong runtime value.
@@ -168,12 +185,23 @@ participant. The exact effects remain bounded by server state, spawned objects,
 and per-RPC validation. I found no evidence that this path gives arbitrary code
 execution, compromises the host machine, or compromises a Steam account.
 
-## Proof of Concept
+## Controlled Reproduction
 
 I intentionally omit packet construction, RPC identifiers, serialization
 layouts, and the procedure for invoking these paths against another person's
-host. The proof of concept is a controlled two-client validation with distinct
-emulated identities and a host under the researcher's control.
+host. The public harness instead launches two isolated Mono game copies with
+distinct GSE identities and a host under the researcher's control. It drives
+the native `LoadAsClient` path, records lobby membership and FishNet lifecycle
+state, exercises bounded game actions, and verifies the resulting save state.
+
+The complete setup, five-run matrix, expected PASS markers, and cleanup rules
+are documented in [Controlled Reproduction](../tests/Repro/README.md). The
+runner requires an explicit game path and GSE Steam API path, refuses a
+non-GSE DLL, refuses to start while Schedule I is already running, and creates
+disposable instances beside the source game so immutable files can use
+same-volume hard links. Test saves and evidence use isolated, ignored paths. It
+does not contain game files, Steam credentials, packet formats, or
+general-purpose RPC tooling.
 
 The following completed runs form the evidence set:
 
@@ -198,12 +226,12 @@ that the underlying game logic executed. The authoritative defensive evidence
 is the three block logs, the absent money sink, and the unchanged runtime and
 persisted balance.
 
-The test harness should remain private or defensive in scope. A safe regression
-test starts a host with a one-member lobby, attempts direct admission from a
-controlled non-member, and asserts rejection before `ClientAuthenticated`.
-Separate tests should allow a deliberately approved peer, then verify that the
-high-risk RPC handlers reject an unauthorized sender without altering money,
-dialogue, or NPC-control state.
+The same repository includes a separate live Valve two-account workflow. That
+workflow packages only the mod, probe, scripts, verifier, and instructions; it
+does not package the game or evidence. The remote half remains deferred until
+two unrelated real Steam accounts and machines are available. GSE is suitable
+for repeating the game-path result, but it cannot establish how Valve enforces
+`k_ELobbyTypeFriendsOnly`.
 
 ## Remediation
 
@@ -234,13 +262,15 @@ sealed class SessionSteamAuthenticator : Authenticator
 }
 ```
 
-The game must configure this authenticator before FishNet accepts remote
-connections. FishNet then calls `ClientAuthenticated` only after the
-authenticator reports success. The game should build the session roster from an
-explicit host decision, accepted invitation, or the intended lobby policy. It
-should not infer permission from knowledge of the host SteamID. The game should
-log the admission decision and reason without exposing sensitive session data
-to remote clients.
+During network initialization, the game must pass this instance to
+`ServerManager.SetAuthenticator(...)` before starting the FishNet server. The
+authenticator must subscribe and initialize successfully before any transport
+can report a remote connection. FishNet then calls `ClientAuthenticated` only
+after the authenticator reports success. The game should build the session
+roster from an explicit host decision, accepted invitation, or the intended
+lobby policy. It should not infer permission from knowledge of the host
+SteamID. The game should log the admission decision and reason without exposing
+sensitive session data to remote clients.
 
 The game should also require sender authorization for high-risk RPCs even after
 admission. Ownership bypasses must be narrow and explicit. For example:
@@ -264,18 +294,31 @@ the authorization decision for shared state.
 Regression coverage should include a non-member direct peer, an explicitly
 approved peer, a stale or unavailable lobby lookup, a reconnect after denial,
 and each high-risk RPC with both allowed and denied senders. Run the suite on
-both Mono and IL2CPP after the game-level repair.
+both Mono and IL2CPP after the game-level repair. The minimum acceptance matrix
+is:
+
+| Scenario | Expected result |
+| --- | --- |
+| Non-member direct connection | Rejected before `ClientAuthenticated`; no player object or game state. |
+| Explicitly approved peer | Admitted and able to complete normal loading. |
+| Lobby/session lookup unavailable | Rejected closed with a local reason code. |
+| Previously denied peer reconnects | Rejected until a new host approval changes the roster. |
+| Admitted but unauthorized RPC sender | Request blocked; money, dialogue, NPC state, and save remain unchanged. |
 
 ## Summary
 
-The controlled evidence shows that direct `LoadAsClient` admission can bypass
-current lobby membership in the tested Steam-compatible environment. The host
-accepts the connection, FishNet authenticates it, and the client spawns and
-loads into the game. Corrected tests then show controlled money, dialogue, and
-NPC-control effects, including two persisted `-123.45` balance changes.
+The controlled GSE/Goldberg evidence shows that direct `LoadAsClient` admission
+can bypass current lobby membership in the tested Steam-compatible environment.
+The host accepts the connection, FishNet authenticates it, and the client
+spawns and loads into the game. Corrected tests then show controlled money,
+dialogue, and NPC-control effects, including two persisted `-123.45` balance
+changes.
 
 The repair is to make a host-controlled SteamID admission decision before
 `ClientAuthenticated`, then enforce sender authority on high-risk RPCs as a
 second layer. The result is a High session and save-integrity issue, not evidence
 of RCE, host compromise, Steam-account compromise, or confirmed live Valve
-FriendsOnly behavior.
+FriendsOnly behavior. A live Valve host-only probe confirmed the game's actual
+FriendsOnly lobby creation call and successful host callback, but the unrelated
+remote peer test remains deferred. IL2CPP build, startup, and target-surface
+checks passed; the two-client gameplay chain has not yet been run on IL2CPP.
