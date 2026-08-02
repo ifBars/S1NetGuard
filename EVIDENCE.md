@@ -38,6 +38,7 @@ matrix passed again from the repository layout:
 | `20260802-141659-ece0d236` | Admission gate rejected the non-member before authentication. |
 | `20260802-141740-41783245` | Money, dialogue, NPC targeting, and persisted `-123.45`. |
 | `20260802-141820-9dd95a9e` | RPC guards blocked all three paths; runtime and persisted balance remained `0`. |
+| `20260802-143337-8fcfc36a` | Fresh direct-admission run recorded `GetAuthenticator()` as null immediately before the non-member authenticated and loaded. |
 
 Run `20260802-080236-27d7eacc` used an incorrect observation point for the
 runtime money assertion. Run `20260802-080907-14426b9f` lost a required

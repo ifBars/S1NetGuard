@@ -104,6 +104,10 @@ the missing authorization check before the latter transition.
 The public controlled harness is under [`tests/Repro`](../tests/Repro/README.md).
 It uses the native `LoadAsClient` entry point and records lobby membership on
 both sides. It does not construct packets or expose serializer layouts.
+Fresh GSE run `20260802-143337-8fcfc36a` also read the live FishNet
+`ServerManager.GetAuthenticator()` state immediately before direct admission.
+The read succeeded and returned null; the non-member transport peer then
+reached `ClientAuthenticated` and completed game loading.
 
 The post-entry impact surface includes these reviewed non-owner RPC paths:
 

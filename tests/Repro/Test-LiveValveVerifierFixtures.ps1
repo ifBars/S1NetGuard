@@ -205,6 +205,7 @@ Write-Output "PASS|Fixture|GenericLobbyErrorIsInconclusive"
 function Get-DirectHostEvents {
     param([string]$Scenario, [bool]$Authenticated)
     $events = (Get-CommonHostEvents $Scenario) + @(
+        "t|fishnet_authenticator_state|role=host|scenario=$($Scenario.ToLowerInvariant())|readSucceeded=true|configured=false|authenticatorType=none",
         "t|host_direct_ready|role=host|scenario=$($Scenario.ToLowerInvariant())|lobbyId=$lobbyId|isInLobby=true|isHost=true|memberCount=1|memberIds=$hostId",
         "t|fishnet_remote_started|role=host|scenario=$($Scenario.ToLowerInvariant())|connectionId=1|transportIndex=0|transportAddress=$clientId|peerInLobby=false"
     )

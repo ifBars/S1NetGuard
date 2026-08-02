@@ -172,6 +172,7 @@ public sealed class ProbeMod : MelonMod
             () => Singleton<LoadManager>.Instance.IsGameLoaded && InstanceFinder.IsServer && InstanceFinder.IsClient,
             90f,
             "host_game_server_ready");
+        RecordFishNetAuthenticatorState();
         RecordLobbySnapshot("host_direct_ready", lobbyId);
         WriteHostReady(lobbyId);
 
@@ -434,6 +435,28 @@ public sealed class ProbeMod : MelonMod
             ("actorSteamId", result.m_ulSteamIDMakingChange),
             ("state", (EChatMemberStateChange)result.m_rgfChatMemberStateChange),
             ("stateRaw", result.m_rgfChatMemberStateChange));
+    }
+
+    private static void RecordFishNetAuthenticatorState()
+    {
+        try
+        {
+            var authenticator = InstanceFinder.ServerManager.GetAuthenticator();
+            Record(
+                "fishnet_authenticator_state",
+                ("readSucceeded", true),
+                ("configured", authenticator != null),
+                ("authenticatorType", authenticator?.GetType().FullName ?? "none"));
+        }
+        catch (Exception exception)
+        {
+            Record(
+                "fishnet_authenticator_state",
+                ("readSucceeded", false),
+                ("configured", "unknown"),
+                ("authenticatorType", "unknown"),
+                ("error", exception.GetType().Name));
+        }
     }
 
     private static void PatchSteamApi(HarmonyLib.Harmony harmony)

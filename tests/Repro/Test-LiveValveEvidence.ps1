@@ -214,6 +214,7 @@ Require-NoMatch $clientEvents "(?m)\|client_join_lobby_requested\|" "JoinLobby r
 Require-NoMatch $clientEvents "(?m)\|steam_join_lobby_api\|" "Steam JoinLobby API call in direct scenario"
 Require-NoMatch $clientEvents "(?m)\|lobby_enter_callback\|.*lobbyId=$LobbyId\|" "LobbyEnter_t callback in direct scenario"
 Require-NoMatch $hostEvents "(?m)\|lobby_chat_update_callback\|.*lobbyId=$LobbyId\|changedSteamId=$ClientSteamId\|.*state=k_EChatMemberStateChangeEntered\|" "client lobby-entry callback in direct scenario"
+Require-Match $hostEvents "(?m)\|fishnet_authenticator_state\|.*readSucceeded=true\|configured=false\|authenticatorType=none(?:\||\r?$)" "empty FishNet authenticator at server startup"
 Require-Match $hostEvents "(?m)\|host_direct_ready\|.*lobbyId=$LobbyId\|isInLobby=true\|isHost=true\|memberCount=1\|memberIds=$HostSteamId(?:\||\r?$)" "host-only lobby snapshot before direct connection"
 Require-Match $clientEvents "(?m)\|client_host_ready\|.*hostSteamId=$HostSteamId\|lobbyId=$LobbyId\|clientInLobbyBeforeAction=false(?:\||\r?$)" "client non-membership before direct action"
 Require-Match $clientEvents "(?m)\|client_direct_start\|.*hostSteamId=$HostSteamId\|clientInLobby=false(?:\||\r?$)" "direct LoadAsClient start"
