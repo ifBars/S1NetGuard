@@ -60,12 +60,27 @@ the archived
 and FishNet's
 [no-authenticator branch](https://github.com/FirstGearGames/FishNet/blob/af51f34ddf4d2c1cea5f3f0cb3eaec1c6aaf2a35/Assets/FishNet/Runtime/Managing/Server/ServerManager.cs#L533-L540).
 
-GSE/Goldberg 08.33.09.23 is the backend used for the automated two-client
-tests. It lets us exercise the real Schedule I, FishySteamworks, FishNet, and
-game-RPC code with distinct local identities, but it does not prove Valve's
-FriendsOnly policy or Valve P2P behavior. The live Valve host-only control
-confirms the game's actual FriendsOnly API call and host callbacks. The remote
-half remains unverified.
+The automated two-client tests use a local Steam API replacement whose binary
+identifies itself as `GSE Client API`. Goldberg documents this model as a
+drop-in `steam_api(64).dll` replacement that emulates Steam online features on
+LAN. Its source implements the same matchmaking interface and native callback
+shapes used here, including `LobbyEnter_t` and `LobbyChatUpdate_t`. This lets us
+exercise the unmodified Schedule I, FishySteamworks, FishNet, and game-RPC code
+with distinct local identities.
+
+That compatibility does not extend to an assurance of Valve-backend parity.
+Goldberg says accurate behavior is a project priority, but its matchmaking
+source includes FriendsOnly lobbies in LAN searches and accepts a JOIN at the
+lobby owner without a friendship or invitation check. Valve instead documents
+`k_ELobbyTypeFriendsOnly` as joinable by friends and invitees and absent from
+the lobby list. GSE therefore proves the application-level path after a peer
+reaches the host; it does not prove Valve discovery, `JoinLobby` admission, or
+P2P routing for an unrelated account. The live Valve host-only control confirms
+the game's actual FriendsOnly API call and host callbacks. The remote half
+remains unverified. See the [Goldberg README](https://gitlab.com/Mr_Goldberg/goldberg_emulator/-/blob/master/README.md),
+[matchmaking implementation](https://gitlab.com/Mr_Goldberg/goldberg_emulator/-/blob/master/dll/steam_matchmaking.h#L1122-1150),
+[JOIN handling](https://gitlab.com/Mr_Goldberg/goldberg_emulator/-/blob/master/dll/steam_matchmaking.h#L1341-1352),
+and [Valve's lobby-type reference](https://partner.steamgames.com/doc/api/ISteamMatchmaking#ELobbyType).
 
 The confirmed GSE/Goldberg result is narrower and still material. After the
 harness created a one-member FriendsOnly lobby, a non-member direct client

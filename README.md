@@ -1,5 +1,9 @@
 # S1 Net Guard
 
+<p align="center">
+  <img src="assets/s1netguard-icon.png" alt="S1 Net Guard icon" width="160">
+</p>
+
 Host-side protection and security research for a Schedule I multiplayer
 admission flaw.
 
@@ -22,12 +26,11 @@ The same controlled client reached shared-money, native world-space dialogue,
 and NPC-targeting RPC paths. Two independent runs changed the isolated test
 save's online balance from `0` to `-123.45` and persisted the result.
 
-These results used distinct GSE identities on isolated Mono game instances.
-They prove the Schedule I, FishySteamworks, FishNet, and game-RPC path under a
-Steam-compatible emulator. They do not prove that Valve permits an unrelated
-account to enter a FriendsOnly lobby. A live Valve host control confirmed the
-actual `CreateLobby(k_ELobbyTypeFriendsOnly, 4)` call, but the unrelated-client
-half remains deferred.
+These results used distinct local GSE identities. GSE replaces Steam's API DLL
+and reproduces the game-facing interfaces and callbacks, so it exercises the
+unchanged Schedule I, FishySteamworks, FishNet, and game-RPC path. Its LAN lobby
+policy is not Valve-equivalent, so the unrelated-account Valve test remains
+deferred. The precise boundary is documented in [EVIDENCE.md](EVIDENCE.md#gse-compatibility-boundary).
 
 ## What the mod does
 

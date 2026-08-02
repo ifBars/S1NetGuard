@@ -16,6 +16,37 @@ and disposable saves, so they remain outside Git.
 | The full exploit and mitigation chain reproduces on IL2CPP. | Not tested | IL2CPP build, startup, and surface compatibility do not substitute for a two-client gameplay reproduction. |
 | The direct path reproduces between two real Valve Steam accounts. | Deferred | The live host half passed; a matching client run has not been performed. |
 
+## GSE compatibility boundary
+
+GSE is a local test substitute for the game-facing Steam API, not evidence that
+Valve's backend makes the same admission decisions. The Goldberg project
+documents a drop-in replacement for `steam_api(64).dll` that emulates Steam
+online features over LAN. Its implementation exposes the Steam matchmaking
+interfaces, returns `LobbyEnter_t`, and emits `LobbyChatUpdate_t`, allowing the
+unmodified Schedule I, FishySteamworks, FishNet, and game RPC code to run with
+two distinct local identities.
+
+Goldberg explicitly prioritizes accurate API behavior, but does not claim
+backend equivalence. Its matchmaking source also shows a material difference:
+FriendsOnly lobbies are included in emulator searches, and the lobby owner
+accepts a JOIN message without checking friendship or an invitation. Valve
+documents `k_ELobbyTypeFriendsOnly` as joinable only by friends and invitees
+and absent from the lobby list.
+
+Accordingly, the GSE runs prove the game-level chain after a transport peer can
+reach the host: absent FishNet authenticator, non-member admission, player load,
+and the reviewed RPC effects. They do not prove that an unrelated Valve account
+can discover or join the lobby, or that Valve will route the same direct peer.
+That last boundary still requires the prepared two-machine, two-account Valve
+test.
+
+Primary sources:
+
+- [Goldberg project README](https://gitlab.com/Mr_Goldberg/goldberg_emulator/-/blob/master/README.md)
+- [Goldberg matchmaking implementation](https://gitlab.com/Mr_Goldberg/goldberg_emulator/-/blob/master/dll/steam_matchmaking.h#L1122-1150)
+- [Goldberg JOIN handling](https://gitlab.com/Mr_Goldberg/goldberg_emulator/-/blob/master/dll/steam_matchmaking.h#L1341-1352)
+- [Valve ISteamMatchmaking documentation](https://partner.steamgames.com/doc/api/ISteamMatchmaking#ELobbyType)
+
 ## Accepted controlled runs
 
 | Run | Result |
@@ -49,7 +80,13 @@ client-side evidence file. Neither run supports a positive or negative claim.
 - Schedule I: `0.4.6f11 Alternate` (Mono).
 - `Assembly-CSharp.dll` SHA-256:
   `EFF38A4C5A176F27694721F29F3C06D9384CA123CEC8D325939C967520A857EE`.
-- GSE: `08.33.09.23`.
+- Local Steam API replacement: file version `08.33.09.23`, SHA-256
+  `EF32F9BB1FEF9E9B58F3EA06F88B2EA1E206C861A4D0431D287E537C59A1A391`.
+
+The local binary identifies itself as `GSE Client API`. Its exact build lineage
+cannot be established from authoritative Goldberg release metadata, so the
+version string is recorded as local binary metadata rather than a Goldberg
+release number.
 
 The repository includes the controlled harness and evidence verifiers, but not
 the game, GSE, generated IL2CPP wrappers, raw logs, test saves, or compiled
