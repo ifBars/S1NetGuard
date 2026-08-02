@@ -231,7 +231,11 @@ workflow packages only the mod, probe, scripts, verifier, and instructions; it
 does not package the game or evidence. The remote half remains deferred until
 two unrelated real Steam accounts and machines are available. GSE is suitable
 for repeating the game-path result, but it cannot establish how Valve enforces
-`k_ELobbyTypeFriendsOnly`.
+`k_ELobbyTypeFriendsOnly`. The evidence verifier classifies a denied attempt
+as FriendsOnly enforcement only when `LobbyEnter_t` specifically returns
+`k_EChatRoomEnterResponseNotAllowed` and both peers' membership evidence
+agrees. Generic, full, unavailable, or conflicting results remain
+inconclusive.
 
 ## Remediation
 

@@ -102,7 +102,14 @@ if ((Read-ManifestValue $clientManifest 'suppliedHostSteamId') -ne $HostSteamId 
     throw "INCONCLUSIVE: client handoff values do not match the asserted host and lobby."
 }
 
-$hashNames = @('assemblySha256', 'steamApiSha256', 'probeSha256')
+$hashNames = @(
+    'assemblySha256',
+    'fishNetSha256',
+    'steamworksNetSha256',
+    'melonLoaderSha256',
+    'steamApiSha256',
+    'probeSha256'
+)
 foreach ($hashName in $hashNames) {
     $hostHash = Read-ManifestValue $hostManifest $hashName
     $clientHash = Read-ManifestValue $clientManifest $hashName
@@ -192,6 +199,9 @@ if ($Scenario -eq 'Lobby') {
     if ($clientJoined -or $hostSawEntered -or $ClientSteamId -in $hostMembers) {
         throw "INCONCLUSIVE: LobbyEnter_t reported $response but host/client membership evidence indicates entry."
     }
+    if ($response -ne 'k_EChatRoomEnterResponseNotAllowed') {
+        throw "INCONCLUSIVE: LobbyEnter_t returned $response ($responseRaw), which does not specifically prove FriendsOnly enforcement."
+    }
     if ($hostMembers.Count -ne 1 -or $hostMembers[0] -ne $HostSteamId) {
         throw "INCONCLUSIVE: denied control ended with an unexpected host member list."
     }
@@ -202,7 +212,7 @@ if ($Scenario -eq 'Lobby') {
 
 Require-NoMatch $clientEvents "(?m)\|client_join_lobby_requested\|" "JoinLobby request in direct scenario"
 Require-NoMatch $clientEvents "(?m)\|steam_join_lobby_api\|" "Steam JoinLobby API call in direct scenario"
-Require-NoMatch $clientEvents "(?m)\|lobby_enter_callback\|.*response=k_EChatRoomEnterResponseSuccess\|" "successful LobbyEnter_t in direct scenario"
+Require-NoMatch $clientEvents "(?m)\|lobby_enter_callback\|.*lobbyId=$LobbyId\|" "LobbyEnter_t callback in direct scenario"
 Require-NoMatch $hostEvents "(?m)\|lobby_chat_update_callback\|.*lobbyId=$LobbyId\|changedSteamId=$ClientSteamId\|.*state=k_EChatMemberStateChangeEntered\|" "client lobby-entry callback in direct scenario"
 Require-Match $hostEvents "(?m)\|host_direct_ready\|.*lobbyId=$LobbyId\|isInLobby=true\|isHost=true\|memberCount=1\|memberIds=$HostSteamId(?:\||\r?$)" "host-only lobby snapshot before direct connection"
 Require-Match $clientEvents "(?m)\|client_host_ready\|.*hostSteamId=$HostSteamId\|lobbyId=$LobbyId\|clientInLobbyBeforeAction=false(?:\||\r?$)" "client non-membership before direct action"

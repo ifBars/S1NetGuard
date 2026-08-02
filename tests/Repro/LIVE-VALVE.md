@@ -108,9 +108,12 @@ Copy the completed host and client evidence directories to one machine:
 
 Change `Scenario` and `Protection` to match the table. The verifier checks the
 SteamIDs, non-friend results, lobby ID and type, callback flags, application
-version, assembly and DLL hashes, lobby membership, FishNet lifecycle, runtime
-state, persistence, and protection logs. It emits one of these only when the
-required sources agree:
+version, matching `Assembly-CSharp`, FishNet, Steamworks.NET, MelonLoader,
+Steam API, probe, and guard hashes, lobby membership, FishNet
+lifecycle, runtime state, persistence, and protection logs. It emits one of
+these only when the required sources agree. A denied lobby attempt proves
+FriendsOnly enforcement only when `LobbyEnter_t` specifically reports
+`k_EChatRoomEnterResponseNotAllowed`; other errors remain inconclusive.
 
 ```text
 VERDICT|ValveAcceptedUnrelatedIdentity|...

@@ -7,7 +7,7 @@ and disposable saves, so they remain outside Git.
 | Claim | Status | Evidence boundary |
 | --- | --- | --- |
 | Schedule I requests a four-member FriendsOnly lobby. | Confirmed | Mono source review and a live Valve host-side API-boundary probe captured `CreateLobby(k_ELobbyTypeFriendsOnly, 4)`. |
-| An unrelated identity can enter that lobby through Valve `JoinLobby`. | Deferred | Requires two unrelated real Steam accounts. GSE behavior cannot answer this platform-policy question. |
+| An unrelated identity can enter that lobby through Valve `JoinLobby`. | Deferred | Requires two unrelated real Steam accounts. GSE behavior cannot answer this platform-policy question. A denial counts as FriendsOnly enforcement only if `LobbyEnter_t` returns `k_EChatRoomEnterResponseNotAllowed` and both membership views show no entry; other failures are inconclusive. |
 | A client can skip lobby membership and connect through `LoadAsClient`. | Confirmed on Mono/GSE | Run `20260802-075529-e3b15683` recorded `peerInLobby=false`, FishNet authentication, player spawn, and completed game load. |
 | The admitted client can affect shared money, native dialogue, and NPC targeting. | Confirmed on Mono/GSE | Runs `20260802-080454-ef9ecfc3` and `20260802-080549-75b31251` reached all three paths and persisted `-123.45`. |
 | S1NetGuard rejects a direct non-member before FishNet authentication. | Confirmed on Mono/GSE | Run `20260802-075809-70af89f6` rejected the peer as `NotInCurrentLobby`. |

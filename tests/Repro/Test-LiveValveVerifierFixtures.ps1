@@ -12,6 +12,9 @@ $assemblyHash = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
 $steamApiHash = "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
 $probeHash = "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC"
 $guardHash = $assemblyHash.Replace('A', 'D')
+$fishNetHash = $assemblyHash.Replace('A', 'E')
+$steamworksNetHash = $assemblyHash.Replace('A', '1')
+$melonLoaderHash = $assemblyHash.Replace('A', '2')
 
 function New-Fixture {
     param(
@@ -64,6 +67,9 @@ function New-Fixture {
         "suppliedHostSteamId=",
         "suppliedLobbyId=",
         "assemblySha256=$assemblyHash",
+        "fishNetSha256=$fishNetHash",
+        "steamworksNetSha256=$steamworksNetHash",
+        "melonLoaderSha256=$melonLoaderHash",
         "steamApiSha256=$steamApiHash",
         "probeSha256=$probeHash",
         "guardSha256=$(if ($Protection -eq 'Baseline') { 'none' } else { $guardHash })",
@@ -80,6 +86,9 @@ function New-Fixture {
         "suppliedHostSteamId=$hostId",
         "suppliedLobbyId=$lobbyId",
         "assemblySha256=$assemblyHash",
+        "fishNetSha256=$fishNetHash",
+        "steamworksNetSha256=$steamworksNetHash",
+        "melonLoaderSha256=$melonLoaderHash",
         "steamApiSha256=$steamApiHash",
         "probeSha256=$probeHash",
         "guardSha256=none",
@@ -163,6 +172,36 @@ $clientLobbyDenied = (Get-CommonClientEvents "Lobby") + @(
 $fixture = New-Fixture "lobby-denied" "Lobby" "Baseline" $hostLobbyDenied $clientLobbyDenied
 Invoke-Fixture $fixture "Lobby" "Baseline" "VERDICT|ValveEnforcedFriendsOnly|"
 
+$clientLobbyError = (Get-CommonClientEvents "Lobby") + @(
+    "t|client_join_lobby_requested|role=client|scenario=lobby|lobbyId=$lobbyId",
+    "t|steam_join_lobby_api|role=client|scenario=lobby|lobbyId=$lobbyId",
+    "t|lobby_enter_callback|role=client|scenario=lobby|lobbyId=$lobbyId|locked=0|response=k_EChatRoomEnterResponseError|responseRaw=5",
+    "t|client_lobby_final|role=client|scenario=lobby|lobbyId=$lobbyId|isInLobby=false|isHost=false|memberCount=0|memberIds="
+)
+$fixture = New-Fixture "lobby-generic-error" "Lobby" "Baseline" $hostLobbyDenied $clientLobbyError
+$genericErrorRejected = $false
+try {
+    $verifyArgs = @{
+        HostRunPath = $fixture.Host
+        ClientRunPath = $fixture.Client
+        HostSteamId = $hostId
+        ClientSteamId = $clientId
+        LobbyId = $lobbyId
+        Scenario = 'Lobby'
+        Protection = 'Baseline'
+    }
+    & $verifier @verifyArgs | Out-Null
+}
+catch {
+    if ($_.Exception.Message -like "INCONCLUSIVE:*does not specifically prove FriendsOnly enforcement.*") {
+        $genericErrorRejected = $true
+    }
+}
+if (-not $genericErrorRejected) {
+    throw "Verifier treated a generic LobbyEnter_t error as FriendsOnly enforcement."
+}
+Write-Output "PASS|Fixture|GenericLobbyErrorIsInconclusive"
+
 function Get-DirectHostEvents {
     param([string]$Scenario, [bool]$Authenticated)
     $events = (Get-CommonHostEvents $Scenario) + @(
@@ -230,6 +269,42 @@ $fixture = New-Fixture "impact-protected" "Impact" "RpcDefense" $hostRpcDefense 
     "[S1NetGuard] Blocked remote NPC target control RPC from SteamID $clientId"
 )
 Invoke-Fixture $fixture "Impact" "RpcDefense" "VERDICT|RpcDefenseBlockedImpact|"
+
+$clientManifestPath = Join-Path $fixture.Client "manifest.txt"
+$clientManifestOriginal = Get-Content -LiteralPath $clientManifestPath -Raw
+$mismatchedFishNetHash = $assemblyHash.Replace('A', '3')
+try {
+    [System.IO.File]::WriteAllText(
+        $clientManifestPath,
+        $clientManifestOriginal.Replace(
+            "fishNetSha256=$fishNetHash",
+            "fishNetSha256=$mismatchedFishNetHash"))
+    $hashMismatchRejected = $false
+    try {
+        $verifyArgs = @{
+            HostRunPath = $fixture.Host
+            ClientRunPath = $fixture.Client
+            HostSteamId = $hostId
+            ClientSteamId = $clientId
+            LobbyId = $lobbyId
+            Scenario = 'Impact'
+            Protection = 'RpcDefense'
+        }
+        & $verifier @verifyArgs | Out-Null
+    }
+    catch {
+        if ($_.Exception.Message -like "INCONCLUSIVE:*fishNetSha256 values differ.*") {
+            $hashMismatchRejected = $true
+        }
+    }
+    if (-not $hashMismatchRejected) {
+        throw "Verifier accepted mismatched FishNet runtime hashes."
+    }
+}
+finally {
+    [System.IO.File]::WriteAllText($clientManifestPath, $clientManifestOriginal)
+}
+Write-Output "PASS|Fixture|RejectsMismatchedRuntimeHash"
 
 $negativePassed = $false
 try {

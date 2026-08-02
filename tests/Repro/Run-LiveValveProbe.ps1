@@ -89,6 +89,9 @@ $resolvedGamePath = [System.IO.Path]::GetFullPath($GamePath)
 $resolvedProbeDll = [System.IO.Path]::GetFullPath($ProbeDll)
 $executable = Join-Path $resolvedGamePath "Schedule I.exe"
 $managedAssembly = Join-Path $resolvedGamePath "Schedule I_Data\Managed\Assembly-CSharp.dll"
+$fishNetAssembly = Join-Path $resolvedGamePath "Schedule I_Data\Managed\FishNet.Runtime.dll"
+$steamworksNetAssembly = Join-Path $resolvedGamePath "Schedule I_Data\Managed\com.rlabrecque.steamworks.net.dll"
+$melonLoaderAssembly = Join-Path $resolvedGamePath "MelonLoader\net35\MelonLoader.dll"
 $steamApi = Join-Path $resolvedGamePath "Schedule I_Data\Plugins\x86_64\steam_api64.dll"
 $modsPath = Join-Path $resolvedGamePath "Mods"
 $cloneMarker = Join-Path $resolvedGamePath ".s1ng-live-control-clone"
@@ -96,6 +99,9 @@ $defaultSave = Join-Path $resolvedGamePath "Schedule I_Data\StreamingAssets\Defa
 
 Assert-File $executable "Schedule I executable"
 Assert-File $managedAssembly "Mono Assembly-CSharp"
+Assert-File $fishNetAssembly "FishNet runtime assembly"
+Assert-File $steamworksNetAssembly "Steamworks.NET assembly"
+Assert-File $melonLoaderAssembly "MelonLoader assembly"
 Assert-File $steamApi "Steam API"
 Assert-File $resolvedProbeDll "Probe DLL"
 
@@ -208,6 +214,9 @@ $manifest = @(
     "suppliedLobbyId=$LobbyId",
     "gamePath=$resolvedGamePath",
     "assemblySha256=$((Get-FileHash -LiteralPath $managedAssembly -Algorithm SHA256).Hash)",
+    "fishNetSha256=$((Get-FileHash -LiteralPath $fishNetAssembly -Algorithm SHA256).Hash)",
+    "steamworksNetSha256=$((Get-FileHash -LiteralPath $steamworksNetAssembly -Algorithm SHA256).Hash)",
+    "melonLoaderSha256=$((Get-FileHash -LiteralPath $melonLoaderAssembly -Algorithm SHA256).Hash)",
     "steamApiSha256=$((Get-FileHash -LiteralPath $steamApi -Algorithm SHA256).Hash)",
     "probeSha256=$((Get-FileHash -LiteralPath $resolvedProbeDll -Algorithm SHA256).Hash)",
     "guardSha256=$(if ($Protection -eq 'Baseline') { 'none' } else { (Get-FileHash -LiteralPath $resolvedGuardDll -Algorithm SHA256).Hash })",
