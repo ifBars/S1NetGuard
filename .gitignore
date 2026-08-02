@@ -1,0 +1,10 @@
+bin/
+obj/
+local.build.props
+artifacts/
+.codex-tmp/
+/reports/message-to-leo.md
+*.dll
+*.pdb
+*.deps.json
+*.zip
