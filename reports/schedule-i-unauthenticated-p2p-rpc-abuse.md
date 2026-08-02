@@ -1,273 +1,271 @@
-# Schedule I: insufficient P2P admission authorization enables post-entry RPC abuse
+# Schedule I: direct P2P admission bypasses lobby membership and exposes server RPCs
 
 ## Executive Summary
 
-I found that the inspected Schedule I networking path can admit a direct Steam
-P2P peer without proving that the host authorized the peer for the current
-session. Lobby membership alone is not a sufficient authorization decision
-when other software opens or modifies lobby visibility. This is the primary issue. The
-transport identifies the remote Steam account, but the server accepts and
-auto-authenticates the connection without an authorization decision based on
-that identity.
+I confirmed, in controlled two-client testing with distinct emulated Steam
+identities, that a Schedule I client can use the direct `LoadAsClient` path to
+join a host while it is not a member of
+the host's lobby. The host accepted the transport connection, FishNet
+auto-authenticated it, and the client spawned a local player and loaded the
+game. This is an admission-control failure: a transport-identified peer
+crosses into the game session without a host-controlled authorization decision.
 
-Once the server admits an unknown peer, several server RPCs expand the practical
-impact. The reviewed runtime includes ownership-bypassing RPCs that can alter
-the shared online balance, display arbitrary world-space dialogue, or affect
-NPC targeting. These are post-entry impact primitives, not the root cause.
+The primary effect gives an unauthorized peer session entry. Once the server admits
+that peer, the peer reaches server RPCs intended for game participants. The
+controlled tests then exercised three high-risk paths: a shared-money mutation,
+free-text world-space dialogue, and NPC target control. The money test changed
+the host's runtime balance from `0` to `-123.45` and persisted `-123.45` in two
+separate successful runs.
 
-I reviewed the current local Mono and IL2CPP wrapper binaries, the relevant
-networking and RPC paths, and the supplied streamer clip. I did not independently
-reproduce an offensive packet sequence or test against a public or live
-session. The affected binaries were:
+I reviewed the controlled logs, the repro harness, the targeted defensive
+patches, and the current Mono surface. The successful tests used Schedule I
+`0.4.6f11 Alternate` on Mono with `Assembly-CSharp.dll` SHA-256
+`EFF38A4C5A176F27694721F29F3C06D9384CA123CEC8D325939C967520A857EE`.
+I did not test a live Valve backend or a public session.
 
-| Runtime | Assembly-CSharp.dll SHA-256 |
-| --- | --- |
-| Mono | `EFF38A4C5A176F27694721F29F3C06D9384CA123CEC8D325939C967520A857EE` |
-| IL2CPP wrapper | `280BD0FCE9C600586CEEE454E67A01463BAE7B326E04B7EF11ECA8BA76BAD920` |
-
-I could not establish an upstream patch-level version from these artifacts, so
-this report identifies the affected builds by hash rather than claiming a
-specific release range. The appropriate severity is High for multiplayer
-session and save integrity. The review found no evidence of remote code
-execution, host operating-system compromise, or Steam-account compromise.
+The evidence supports High severity for multiplayer session and save integrity.
+It does not show remote code execution, host operating-system compromise, or
+Steam-account compromise.
 
 ## Background
 
-Schedule I's Steam transport accepts inbound Steam Networking Sockets
-connections through FishySteamworks. The connection's address exposes the
-transport-verified remote SteamID. That identity is useful only if the server
-uses it to make an admission decision.
+The relevant trust boundary is between a Steam-compatible transport connection
+and a game-authorized client. FishySteamworks supplies a transport address that
+identifies the remote peer. FishNet can then authenticate the connection. A
+secure host must make an explicit admission decision before that authentication
+step: is this verified SteamID a current member of the active session, or did
+the host otherwise authorize it?
 
-The inspected base-game path requests a friends-only Steam lobby. Valve
-documents that friends-only lobbies are joinable by friends and invitees but
-do not appear in the lobby list. If the streamer's lobby was open, a setting or
-another modification changed that base-game assumption. The incident callback
-described below is stronger session-specific evidence and indicates that the
-account appeared in the lobby. See Valve's
-[ISteamMatchmaking documentation](https://partner.steamgames.com/doc/api/isteammatchmaking?language=english).
+Lobby visibility and game admission are different decisions. A FriendsOnly
+lobby may influence how a backend exposes or joins a lobby, but it does not by
+itself prove that every later direct transport connection has passed a
+game-level authorization check. Friends are not generally untrusted. The
+missing property is that the host never established whether this particular
+direct peer belonged in this particular running session.
 
-The expected multiplayer invariant is straightforward: a direct P2P transport
-connection must not become a game session merely because the transport can
-identify a Steam account. The host should admit the account only after a
-host-controlled authorization decision. The defensive default in the attached
-mod requires both current-lobby membership and immediate Steam friendship, or
-an explicit SteamID allowlist entry. This preserves ordinary friend play while
-preventing an unknown member of an open lobby from becoming an authenticated
-game client.
+The inspected base-game `SteamLobbyService.CreateLobby` path requests
+`k_ELobbyTypeFriendsOnly`. Valve documents that type as joinable by friends and
+invitees and absent from the public lobby list. Valve returns the actual result
+of a `JoinLobby` attempt through `LobbyEnter_t`. FishNet's separate behavior is
+that a server without an authenticator advances a transport connection into
+its authenticated-client path. The latter does not override Valve's lobby
+rule; it matters when a client reaches the game transport without joining the
+lobby. See the
+[Steamworks matchmaking reference](https://partner.steamgames.com/doc/api/ISteamMatchmaking#ELobbyType),
+the archived
+[FishNet ServerManager documentation](https://web.archive.org/web/20240324100202/https://fish-networking.gitbook.io/docs/fishnet-building-blocks/components/managers/server-manager),
+and FishNet's
+[no-authenticator branch](https://github.com/FirstGearGames/FishNet/blob/main/Assets/FishNet/Runtime/Managing/Server/ServerManager.cs#L581-L587).
 
-The reviewed configuration does not assign a FishNet authenticator. FishNet's
-`ServerManager` therefore follows its no-authenticator behavior and
-auto-authenticates a connected client. FishNet's own
-[ServerManager documentation](https://fish-networking.gitbook.io/docs/fishnet-building-blocks/components/managers/server-manager)
-states that an empty authenticator allows clients to join without specialized
-authentication. When we combine that behavior with FishySteamworks inbound
-connection acceptance and no host-authorization check, the SteamID reaches a
-trusted game session without a host-controlled trust decision.
+GSE 08.33.09.23 is a controlled Steam-compatible emulator and does not prove
+Valve FriendsOnly backend behavior. The live Valve two-account FriendsOnly
+join question remains unverified. The controlled result is narrower and still
+material: after the harness created a one-member FriendsOnly lobby, a
+non-member direct client reached an authenticated, loaded game session.
 
 ## Vulnerability Details
 
-We first reach the issue at the transport boundary. FishySteamworks accepts an
-inbound Steam Networking Sockets connection and makes the verified remote
-SteamID available as the connection address. I found no authenticator
-assignment and no admission check that compares that identity with a
-host-controlled trust decision.
+We start with a host whose current lobby contains only the host identity. The
+second controlled identity is neither a current lobby member nor an immediate
+Steam friend. It invokes the game's direct `LoadAsClient` route instead of
+joining the lobby. The harness records both the client's lobby state and the
+host's FishNet lifecycle events without publishing packet identifiers,
+serialization details, or an offensive invocation recipe.
 
-The incident log supplies an important additional clue:
+In baseline run `20260802-075529-e3b15683`, the client remained outside the
+lobby before and after the direct action. On the host, the remote connection
+appeared with `peerInLobby=false`, and the FishNet authentication callback ran
+with `authenticatedBeforeCall=false`. The client then reported an authenticated
+FishNet client, a spawned local player, a loaded game, and the main game scene.
+The controlled bypass therefore crossed all of these state changes:
 
 ```text
-Player join/leave: vee
-ScheduleOne.Networking.SteamLobbyService:PlayerEnterOrLeave(LobbyChatUpdate_t)
+not in host lobby
+    -> direct LoadAsClient
+    -> remote transport connection accepted
+    -> FishNet client authenticated
+    -> player spawned and game loaded
 ```
 
-The callback contains the changed user's SteamID, the account making the
-change, the lobby ID, and state-change flags. The game discards those values in
-this log line and resolves only the changed account's persona name. If `vee`
-was the attacker, this event shows that the account appeared in the Steam lobby
-as well as the game. It also means that a defense which trusts every current
-lobby member would not stop this incident when the lobby is open. The callback
-line alone does not distinguish entry from leave because the game also omits
-the state flags.
+This is not an inference from a UI state alone. The host and client logs agree
+on the remote connection, authentication callback, absent lobby membership,
+and completed load. The reviewed repro harness also instruments the FishNet
+remote-connection and `ClientAuthenticated` lifecycle methods, so we can place
+the missing authorization check before the latter transition.
 
-The next transition matters because FishNet `ServerManager` auto-authenticates
-when the configuration omits an authenticator. In other words, the server treats a
-transport connection as a game-authorized connection without checking whether
-the identified peer belongs in this session. A valid SteamID is not the same
-as permission to join a particular lobby.
+The post-entry impact surface includes these reviewed non-owner RPC paths:
 
-The admission flaw creates a broader RPC surface. The current Mono source has
-295 `ServerRpc` declarations marked `RequireOwnership=false`. That count is an
-inventory signal, not a claim that all 295 methods are exploitable. I reviewed
-the following high-risk examples because their effects are useful after an
-unknown peer reaches an authenticated session:
-
-| RPC | Reviewed effect |
+| Path | Controlled effect |
 | --- | --- |
-| `MoneyManager.CreateOnlineTransaction` | Accepts remotely controlled transaction name, unit amount, quantity, and note. The server applies unit amount multiplied by quantity to the shared online balance, and later persistence records the aggregate. |
-| `NPC.SendWorldSpaceDialogue` and `Player.SendWorldSpaceDialogue` | Send remotely controlled text and duration to native world-space UI. |
-| `CombatBehaviour.SetTargetAndEnable_Server(NetworkObject)` | Allows server-side AI target control for the supplied network object. |
+| `MoneyManager.CreateOnlineTransaction` | Changed the shared online balance and its persisted value in the successful tests. |
+| `NPC.SendWorldSpaceDialogue` | Reached the native world-space dialogue path with controlled test text and duration. |
+| `CombatBehaviour.SetTargetAndEnable_Server(NetworkObject)` | Reached the server-side NPC target-control path with a controlled test object. |
 
-These methods do not make arbitrary Steam friends untrusted. The concern is
-the missing distinction between a peer the host intentionally admitted and an
-unknown peer who reached the lobby or direct transport path. Once the server
-loses that distinction, the wrong trust context can reach non-owner RPCs.
+These are impact primitives after admission, not independent proof that every
+non-owner RPC is reachable or unsafe. Their presence matters because the server
+has already treated a non-member direct peer as an authenticated participant.
 
-The reported streamer incident involved an unknown peer, repeated reconnects,
-native-looking NPC text, following or forced behavior, and a balance change
-from about 1M to 100K. The supplied 87-second clip visibly shows sequential
-promotional messages, including a Discord invitation and social-media promotion,
-rendered as colored native-looking world-space dialogue above a nearby NPC. The
-NPC remains nearby while the player moves along the road. This supports the
-reported dialogue behavior and is consistent with following, but it does not
-identify the exact RPC or prove AI target manipulation.
+### Incident correlation
 
-The clip does not show the balance UI or a transaction, so it does not
-independently corroborate the reported balance change. It also does not expose
-the peer's SteamID or the original admission path. Those points remain incident
-correlations rather than demonstrated parts of an end-to-end exploit.
+The supplied streamer clip shows promotional text rendered through the game's
+native-looking world-space dialogue above a nearby NPC. The NPC stays close as
+the player moves. That footage supports the reported dialogue behavior and is
+consistent with NPC control, but it does not identify the exact RPC. The clip
+does not show the reported balance change or the original join sequence.
+
+The accompanying log contains `Player join/leave: vee` from
+`SteamLobbyService.PlayerEnterOrLeave(LobbyChatUpdate_t)`. That callback carries
+the lobby ID, changed SteamID, actor SteamID, and member-state flags. The game
+logs only the persona name. Without the omitted flags, the line cannot tell us
+whether the state indicated entry, leave, disconnect, or removal. If a full callback
+shows `k_EChatMemberStateChangeEntered`, then it proves lobby membership changed;
+it still does not explain whether Valve treated the account as a friend or
+invitee, or whether another component changed the lobby type.
 
 [Streamer incident clip](../evidence/streamer-incident.mp4)
-Normalized evidence SHA-256: `E15F23A9B6586DA0EFF7FFBE919D9EC08FC3A30938743B1C362D467E67D0C22E`
 
 ## Exploitability Analysis
 
-The available evidence supports unauthorized admission, not a claim that a
-single RPC alone bypasses every normal permission check. If an unknown peer can
-establish an inbound transport connection and the server auto-authenticates it
-without a host-controlled authorization decision, that peer enters the same broad
-server-RPC trust boundary as a participant the host actually admitted.
+The evidence supports a repeatable controlled chain rather than a speculative
+one. We first establish that the peer is not in the host lobby, then direct
+admission succeeds, then FishNet authenticates the peer, and only then do the
+controlled game actions run. This sequencing keeps the root cause clear: the
+problem is not that a dialogue or money RPC independently defeats lobby rules.
+The problem is that the server admits the wrong peer before it evaluates
+application-level authority.
 
-From there, the reviewed methods supply concrete integrity impacts. We can
-separate them by consequence: the transaction RPC can mutate the shared online
-balance from remote values; the dialogue RPCs can create native-looking text
-in the world; and the combat RPC can influence NPC targeting. Their practical
-availability still depends on ordinary runtime conditions such as spawned
-objects and the server state at the time of the call. This report does not
-claim that every non-owner RPC is reachable in every session.
+Controlled run `20260802-080454-ef9ecfc3` passed the corrected impact
+assertions. It recorded all three paths, changed the host runtime balance from
+`0` to `-123.45`, and persisted `-123.45`. Fresh run
+`20260802-080549-75b31251` repeated the same result with a different controlled
+identity pair: all three paths ran, the runtime balance became `-123.45`, and
+the save contained `-123.45`.
 
-Repeated reconnects would be relevant because each successful transport
-admission may recreate the same unauthorized session opportunity. A temporary
-denylist is therefore useful as a host-side containment measure, but it is not
-a replacement for checking admission before authentication.
+The prior run `20260802-080236-27d7eacc` is not an accepted money-impact
+result. The save contained `-123.45`, but the probe sampled the server RPC stage
+before the observer-side balance mutation and recorded the wrong runtime value.
+The runner then compared persistence against that bad measurement. The later
+corrected and fresh runs observe the actual mutation and are the evidence for
+the runtime and persistence result.
 
-The available evidence supports High severity because an uninvited account may
-reach gameplay and persistence-affecting server functionality. It does not
-support a claim of arbitrary code execution, a compromise of the host machine,
-or access to the victim's Steam account. I also did not verify the exact cause
-of the streamer's balance change, so it should remain an incident correlation,
-not a demonstrated end-to-end exploit.
+I exclude run `20260802-080907-14426b9f` from the mitigation evidence
+because the harness failed to share the required client-side file. It is not a
+negative result for the defense. Do not combine it with the completed tests.
+
+The practical consequence is host session and save integrity loss. A wrongly
+admitted account can receive the same broad RPC opportunity as a permitted
+participant. The exact effects remain bounded by server state, spawned objects,
+and per-RPC validation. I found no evidence that this path gives arbitrary code
+execution, compromises the host machine, or compromises a Steam account.
 
 ## Proof of Concept
 
-I am intentionally omitting packet construction, RPC identifiers, serializer
-details, and an offensive invocation sequence. Publishing those details would
-turn a private admission finding into a directly reusable abuse guide.
+I intentionally omit packet construction, RPC identifiers, serialization
+layouts, and the procedure for invoking these paths against another person's
+host. The proof of concept is a controlled two-client validation with distinct
+emulated identities and a host under the researcher's control.
 
-The safe proof is structural and defensive. I completed the following checks:
+The following completed runs form the evidence set:
 
-1. Traced the current Mono transport ordering. FishySteamworks registers the
-   connection-to-SteamID mapping before it raises FishNet's remote-start event.
-   FishNet then creates the `NetworkConnection` and, with no authenticator,
-   calls its authenticated-client path.
-2. Built the defense mod independently for Mono (`netstandard2.1`) and IL2CPP
-   (`net6.0`) with zero warnings and zero errors.
-3. Ran eleven admission-policy scenarios covering local host, friend-plus-lobby
-   authorization, explicit allowlist, unknown non-member, untrusted non-friend
-   lobby member, invalid identity, fail-closed and explicit compatibility
-   modes, session reconnect denial, and allowlist parsing.
-4. Verified all twelve targeted admission, lobby-audit, and RPC method surfaces against both
-   current assemblies by name prefix and signature.
-5. Launched both real game backends with temporary deployments. Each loaded
-   the mod through MelonLoader and installed all four targeted RPC guard pairs;
-   the runner then removed the temporary DLL.
+| Run | Result | What it establishes |
+| --- | --- | --- |
+| `20260802-075529-e3b15683` | PASS | Direct non-member admission, FishNet authentication, local-player spawn, and game load. |
+| `20260802-080454-ef9ecfc3` | PASS | Corrected end-to-end impact: controlled money, dialogue, and combat paths; runtime and persisted balance `-123.45`. |
+| `20260802-080549-75b31251` | PASS | Fresh repeat of the corrected impact result, including persisted `-123.45`. |
+| `20260802-075809-70af89f6` | PASS | Admission mitigation rejects the non-member before authentication. |
+| `20260802-081044-1dc07c57` | PASS | RPC defense validation with an explicitly allowlisted test peer. |
 
-I have not yet run the final two-account network scenario. That controlled
-test remains the required end-to-end confirmation:
+The admission-mitigation run logged the non-member as `NotInCurrentLobby` and
+rejected the connection before the client reached the authenticated game state.
+The RPC-defense run intentionally allowlisted the test peer so it could pass
+the admission gate and exercise the second layer. It logged blocks for all
+three protected capabilities, retained a runtime balance of `0`, and persisted
+`0`.
 
-1. Start a controlled host with an active Steam lobby and a test Steam account
-   that is not a lobby member and is not allowlisted.
-2. Instrument the transport admission path to record the transport-verified
-   SteamID, the lobby-membership result, the allowlist result, and whether
-   FishNet authentication begins.
-3. Verify that the vulnerable configuration can reach authenticated-session
-   handling without a successful membership or allowlist decision.
-4. Install the proposed admission gate, then repeat the test. Verify that the
-   gate rejects both a non-member and an untrusted non-friend lobby member
-   before authentication, while accepting a Steam friend in the active lobby.
-5. When you enable the optional RPC defense, exercise only defensive RPC tests:
-   feed validly decoded test inputs into the generated RPC reader/handler
-   boundary and verify that the reader consumes the expected fields while the
-   handler suppresses dangerous money, free-text dialogue, and NPC control
-   logic from remote callers.
+In that protected run, the observational Harmony prefixes for dialogue and
+combat still ran. Those prefixes only observe method entry; they are not proof
+that the underlying game logic executed. The authoritative defensive evidence
+is the three block logs, the absent money sink, and the unchanged runtime and
+persisted balance.
 
-Use only admission and suppression results as expected defensive test output:
-
-```text
-[PASS] Non-member SteamID rejected before FishNet authentication
-[PASS] Steam friend in current lobby admitted
-[PASS] Non-friend lobby member rejected unless explicitly allowed
-[PASS] Explicitly allowlisted SteamID admitted
-[PASS] Blocked SteamID denied on reconnect
-[PASS] Protected RPC payload consumed; dangerous logic not executed
-```
-
-Run these tests only with accounts and hosts you control. The invariant needs
-no public-session testing.
+The test harness should remain private or defensive in scope. A safe regression
+test starts a host with a one-member lobby, attempts direct admission from a
+controlled non-member, and asserts rejection before `ClientAuthenticated`.
+Separate tests should allow a deliberately approved peer, then verify that the
+high-risk RPC handlers reject an unauthorized sender without altering money,
+dialogue, or NPC-control state.
 
 ## Remediation
 
-The fix should restore one invariant: an inbound direct Steam connection must
-not authenticate into the game unless the host has authorized its
-transport-verified SteamID for the current session.
-This check belongs before FishNet auto-authentication, not after an RPC has
-already reached game logic.
+The game must authorize the transport-verified SteamID before it calls
+`ClientAuthenticated` or creates the player's game state. The authorization
+source should be a host-controlled session decision, such as an explicit
+invite/session allowlist or membership in the active invited session. A failed
+identity lookup must fail closed, and a rejected identity should not reconnect
+into the same session without a new host decision.
 
-The defense mod included with this report enforces that invariant at the admission
-boundary. It uses the verified transport SteamID, permits an immediate Steam
-friend who is also in the current lobby or an explicit allowlist entry, and
-denies all other inbound peers. A compatibility setting can trust every current
-lobby member, but the mod disables it by default because it weakens protection
-for open lobbies. A denylist blocks reconnect attempts, and an optional lobby join lock can close
-new admissions when the host wants a fixed session. These defaults should
-preserve ordinary lobby and friend play rather than treating friends as
-untrusted by default.
+FishNet already provides the correct extension point. The game should attach a
+custom `Authenticator` to `ServerManager` before it starts the server. That
+authenticator should resolve the FishySteamworks transport address to a
+SteamID, compare it with the host-approved session roster, and report success
+only after the check passes. A simplified shape is:
 
-The mod also has optional defense-in-depth protections at selected generated
-RPC reader/logic paths. They preserve packet reads and suppress the selected
-dangerous logic from remote callers. The mod disables this stricter mode by
-default because it can affect legitimate invited-player actions. It is a useful
-containment layer, but it must not substitute for admission control.
+```csharp
+sealed class SessionSteamAuthenticator : Authenticator
+{
+    public override event Action<NetworkConnection, bool> OnAuthenticationResult;
 
-Tests must exercise both Mono and IL2CPP builds. The regression suite should
-cover at least these cases:
+    public override void OnRemoteConnection(NetworkConnection connection)
+    {
+        ulong steamId = ReadVerifiedTransportSteamId(connection);
+        bool allowed = sessionAdmission.Allows(steamId);
+        OnAuthenticationResult?.Invoke(connection, allowed);
+    }
+}
+```
 
-1. Immediate Steam friend in the current lobby: accepted and authenticated.
-2. Explicitly allowlisted non-member: accepted and authenticated.
-3. Unknown non-member: rejected before authentication.
-4. Non-friend current lobby member: rejected unless explicitly allowlisted.
-5. Denylisted peer: rejected on the first and subsequent reconnect attempts.
-6. Lobby join lock: blocks new joins according to its documented setting.
-7. Protected RPC: consumes the expected payload but does not execute protected
-   logic for a remote untrusted sender.
+The game must configure this authenticator before FishNet accepts remote
+connections. FishNet then calls `ClientAuthenticated` only after the
+authenticator reports success. The game should build the session roster from an
+explicit host decision, accepted invitation, or the intended lobby policy. It
+should not infer permission from knowledge of the host SteamID. The game should
+log the admission decision and reason without exposing sensitive session data
+to remote clients.
 
-For an upstream fix, the game must make the same SteamID-to-membership/allowlist
-decision in its own connection admission path. A game-level fix is preferable
-to relying on every host to install a defensive mod.
+The game should also require sender authorization for high-risk RPCs even after
+admission. Ownership bypasses must be narrow and explicit. For example:
+
+```csharp
+[ServerRpc(RequireOwnership = false)]
+void CreateOnlineTransaction(Transaction request, NetworkConnection sender)
+{
+    if (!sessionAuthority.CanMutateSharedMoney(sender, request))
+        return;
+
+    ApplyValidatedTransaction(request);
+}
+```
+
+Apply the same pattern to world-space dialogue and NPC target control. Validate
+the sender's session role, relationship to the target object, and the semantic
+limits of each request. Do not rely on successful transport authentication as
+the authorization decision for shared state.
+
+Regression coverage should include a non-member direct peer, an explicitly
+approved peer, a stale or unavailable lobby lookup, a reconnect after denial,
+and each high-risk RPC with both allowed and denied senders. Run the suite on
+both Mono and IL2CPP after the game-level repair.
 
 ## Summary
 
-This issue is an authorization failure at the P2P admission boundary. The
-transport can identify an inbound Steam peer, but the reviewed configuration
-does not require a host-controlled authorization decision before FishNet
-authenticates it. The incident's persona-only lobby callback also shows why
-membership alone cannot serve as that decision for an open lobby.
+The controlled evidence shows that direct `LoadAsClient` admission can bypass
+current lobby membership in the tested Steam-compatible environment. The host
+accepts the connection, FishNet authenticates it, and the client spawns and
+loads into the game. Corrected tests then show controlled money, dialogue, and
+NPC-control effects, including two persisted `-123.45` balance changes.
 
-We can then understand the RPC findings in their proper role: they make
-unauthorized admission consequential by giving a wrongly admitted peer access
-to gameplay and persistence-affecting actions. The reviewed evidence supports
-High risk to session and save integrity. It does not support claims of RCE,
-host compromise, or Steam-account compromise.
-
-Future review should prioritize the other `RequireOwnership=false` RPCs by
-checking sender context, object visibility, and server-side validation. That
-work should remain distinct from the central repair: reject unknown direct P2P
-peers before game authentication.
+The repair is to make a host-controlled SteamID admission decision before
+`ClientAuthenticated`, then enforce sender authority on high-risk RPCs as a
+second layer. The result is a High session and save-integrity issue, not evidence
+of RCE, host compromise, Steam-account compromise, or confirmed live Valve
+FriendsOnly behavior.

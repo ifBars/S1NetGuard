@@ -7,10 +7,12 @@ using S1NetGuard.Security;
 using RemoteConnectionState = FishNet.Transporting.RemoteConnectionState;
 using RemoteConnectionStateArgs = FishNet.Transporting.RemoteConnectionStateArgs;
 using ServerManager = FishNet.Managing.Server.ServerManager;
+using SteamUser = Steamworks.SteamUser;
 #else
 using RemoteConnectionState = Il2CppFishNet.Transporting.RemoteConnectionState;
 using RemoteConnectionStateArgs = Il2CppFishNet.Transporting.RemoteConnectionStateArgs;
 using ServerManager = Il2CppFishNet.Managing.Server.ServerManager;
+using SteamUser = Il2CppSteamworks.SteamUser;
 #endif
 
 namespace S1NetGuard.Patches;
@@ -51,6 +53,7 @@ internal static class ServerAdmissionPatch
         AdmissionDecision decision = AdmissionPolicy.Evaluate(
             args.ConnectionId,
             transportAddress,
+            SteamUser.GetSteamID().m_SteamID,
             lobbyAvailable,
             lobbyMemberIds,
             isSteamFriend,

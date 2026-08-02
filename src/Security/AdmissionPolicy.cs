@@ -7,6 +7,7 @@ internal static class AdmissionPolicy
     internal static AdmissionDecision Evaluate(
         int connectionId,
         string? transportAddress,
+        ulong localSteamId,
         bool lobbyAvailable,
         IEnumerable<string> lobbyMemberIds,
         bool isSteamFriend,
@@ -24,6 +25,11 @@ internal static class AdmissionPolicy
         if (!TryParseSteamId(transportAddress, out ulong steamId))
         {
             return new AdmissionDecision(false, AdmissionReason.InvalidTransportIdentity, 0UL);
+        }
+
+        if (localSteamId != 0UL && steamId == localSteamId)
+        {
+            return new AdmissionDecision(true, AdmissionReason.LocalHost, steamId);
         }
 
         if (sessionDenylist.Contains(steamId))
