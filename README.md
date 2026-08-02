@@ -3,8 +3,10 @@
 Host-side protection and security research for a Schedule I multiplayer
 admission flaw.
 
-[Watch the streamer incident clip](evidence/streamer-incident.mp4) ·
-[Read the security write-up](reports/schedule-i-unauthenticated-p2p-rpc-abuse.md)
+https://github.com/user-attachments/assets/5ccbcb0d-00bd-40c6-bf06-567fb1dcb196
+
+[Incident clip](evidence/streamer-incident.mp4) |
+[Security write-up](reports/schedule-i-unauthenticated-p2p-rpc-abuse.md)
 
 ## Confirmed behavior
 
@@ -32,10 +34,10 @@ connection. By default, it allows:
 - an immediate Steam friend who is also in the current lobby; or
 - a SteamID the host explicitly allowlisted.
 
-The admission gate rejects other remote peers before player creation. Optional RPC guards
-block the reviewed money, free-text dialogue, and NPC-targeting paths. Those
-guards are off by default because they can also block legitimate actions from
-invited players.
+The admission gate rejects other remote peers before player creation. Optional
+RPC guards block the reviewed money, free-text dialogue, and NPC-targeting
+paths. Those guards are off by default because they can also block legitimate
+actions from invited players.
 
 Controlled negative tests confirmed that the admission gate rejects a direct
 non-member before FishNet authentication. A separate allowlisted-client test
