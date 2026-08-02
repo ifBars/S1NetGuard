@@ -8,6 +8,8 @@ The reviewed connection path accepts an incoming Steam P2P peer and lets FishNet
 
 Several non-owner server RPCs make that admission flaw consequential. The reviewed paths can affect shared online money, display arbitrary world-space dialogue, and influence NPC targeting. The incident clip visibly shows promotional messages rendered through the game's native-looking NPC dialogue. The reported balance change and exact admission route are not independently confirmed by the clip.
 
+https://github.com/user-attachments/assets/5ccbcb0d-00bd-40c6-bf06-567fb1dcb196
+
 - [Security write-up](reports/schedule-i-unauthenticated-p2p-rpc-abuse.md)
 - [Incident clip](evidence/streamer-incident.mp4)
 
