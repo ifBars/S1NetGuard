@@ -1,67 +1,43 @@
 # S1 Net Guard
 
-Security research and a host-side defensive MelonLoader mod for an authorization weakness in Schedule I multiplayer.
+Security research and a temporary host-side defense for a Schedule I multiplayer admission flaw.
 
-The inspected networking path can accept a Steam P2P connection and let FishNet authenticate it without a host-controlled authorization decision. Once admitted, a peer can reach high-risk non-owner server RPCs related to shared money, world-space dialogue, and NPC targeting.
+## Finding
 
-## Research package
+The reviewed connection path accepts an incoming Steam P2P peer and lets FishNet authenticate it without a host-controlled authorization decision. Lobby membership is not enough for an open lobby because an unknown account may enter the lobby and then reach the same server-RPC boundary as an invited player.
+
+Several non-owner server RPCs make that admission flaw consequential. The reviewed paths can affect shared online money, display arbitrary world-space dialogue, and influence NPC targeting. The incident clip visibly shows promotional messages rendered through the game's native-looking NPC dialogue. The reported balance change and exact admission route are not independently confirmed by the clip.
 
 - [Security write-up](reports/schedule-i-unauthenticated-p2p-rpc-abuse.md)
-- [Streamer incident clip](evidence/streamer-incident.mp4)
+- [Incident clip](evidence/streamer-incident.mp4)
 
-The clip visually corroborates attacker-controlled promotional messages rendered through native-looking world-space NPC dialogue. It does not independently prove the reported balance change or establish the exact connection path.
+## Recommended game fix
 
-This repository intentionally omits offensive packet construction, generated RPC identifiers, serializer details, proprietary game assemblies, decompiled dumps, generated IL2CPP wrappers, AssetRipper exports, and game assets.
+The game should authorize the transport-verified SteamID before FishNet authenticates the connection. Admission should require a host-approved invite, explicit session authorization, or another host-controlled trust decision. The game should reject an unauthorized peer before creating its player object or allowing it to invoke game RPCs.
 
-## Defensive mod
+Lobby visibility and game admission should remain separate decisions. High-risk RPCs should also validate the sender's authority. These checks provide a second layer, not a substitute for admission control.
 
-S1 Net Guard evaluates remote Steam identities before FishNet creates or authenticates a player. It accepts an immediate Steam friend in the current lobby or an explicitly allowed SteamID.
+## Temporary mitigation
 
-The mod keeps rejected identities on a session denylist and offers an optional late-join lobby lock. Optional RPC guards cover shared-money mutation, free-text world-space dialogue, and NPC target control. The mod disables RPC hardening by default to preserve normal invited-player behavior; the admission gate is the main protection.
+S1 Net Guard applies the admission check as a MelonLoader mod. By default, it accepts an immediate Steam friend who is in the current lobby or a SteamID explicitly allowed by the host. It rejects other remote peers before FishNet authentication and blocks rejected identities from reconnecting during the session.
+
+Optional RPC guards cover the reviewed money, dialogue, and NPC-targeting paths. The mod disables them by default because they may interfere with legitimate invited-player actions.
+
+## Status
+
+- Mono and IL2CPP builds compile without warnings or errors.
+- Eleven admission-policy scenarios pass.
+- Twelve admission, lobby-audit, and RPC surfaces match the current Mono and IL2CPP assemblies.
+- Real startup smoke tests pass on both runtimes.
+- A controlled two-account end-to-end admission test remains outstanding.
 
 ## Build
 
-Copy `local.build.props.example` to `local.build.props`, set the two game paths, and build each runtime independently:
+Copy `local.build.props.example` to `local.build.props`, set the local game paths, then build the matching runtime:
 
 ```powershell
 dotnet build S1NetGuard.csproj -c Mono -p:AutomateLocalDeployment=false
 dotnet build S1NetGuard.csproj -c Il2cpp -p:AutomateLocalDeployment=false
 ```
 
-Install only a locally built DLL matching the game backend in the game's `Mods` directory. This repository does not publish a release or prebuilt binaries.
-
-## Configuration
-
-MelonPreferences creates an `S1NetGuard` category:
-
-- `EnableAdmissionGate=true`: enforce host authorization using the transport SteamID.
-- `FailClosedWhenLobbyUnavailable=true`: reject remote peers if the host cannot verify lobby membership.
-- `AllowedSteamIds=`: comma-separated SteamID64 exceptions.
-- `TrustSteamFriendsInLobby=true`: trust verified immediate Steam friends who are current lobby members.
-- `TrustAllCurrentLobbyMembers=false`: compatibility mode for trusting non-friend lobby members; enabling it weakens protection for open lobbies.
-- `LockLobbyWhenGameplayStarts=false`: optionally disable late Steam lobby joins after loading gameplay.
-- `EnableRpcDefenseInDepth=false`: optionally suppress remote high-risk RPC logic.
-- `DisconnectOnRpcViolation=true`: disconnect and session-deny peers that hit an enabled RPC guard.
-
-If the host intentionally uses a non-Steam or lobby-less transport workflow, add the expected SteamID64 values to `AllowedSteamIds` or explicitly choose fail-open mode. Fail-open mode weakens the primary protection.
-
-## Verification
-
-```powershell
-dotnet run --project tests\S1NetGuard.PolicyVerifier\S1NetGuard.PolicyVerifier.csproj -c Release
-.\tests\Verify-GameSurface.ps1 -MonoGamePath "<mono install>" -Il2CppGamePath "<il2cpp install>"
-.\tests\Run-StartupSmoke.ps1 -Runtime Mono -GamePath "<mono install>"
-.\tests\Run-StartupSmoke.ps1 -Runtime Il2Cpp -GamePath "<il2cpp install>"
-```
-
-The verifier covers local-host admission, friend-plus-lobby authorization, explicit exceptions, unknown direct peers, untrusted non-friend lobby members, invalid identities, fail-closed behavior, opt-in compatibility modes, reconnect denial, and allowlist parsing. The surface check verifies every Harmony target against both current assemblies without copying or publishing proprietary game code. The startup smoke temporarily deploys only the matching S1 Net Guard DLL, waits for the real MelonLoader/Harmony initialization markers, stops only the process it launched, and removes the temporary deployment.
-
-The mod also expands the game's persona-only lobby callback log with a line like:
-
-```text
-[S1NetGuard] Lobby member update: changedSteamId=..., actorSteamId=..., lobbyId=..., state=Entered, immediateFriend=False.
-```
-
-This distinguishes entry, departure, disconnect, kick, and ban events while retaining the exact Steam identities needed for incident correlation.
-
-For a live check, host a normal lobby and confirm a Steam friend in that lobby connects. For an invited non-friend, add their SteamID64 to `AllowedSteamIds`. Then attempt connections from controlled non-friend identities both outside and inside the lobby; confirm the host log reports `NotInCurrentLobby` and `UntrustedLobbyMember` respectively, and that no player object appears. Do not test against third-party sessions.
+This repository does not publish binaries. It also omits packet-construction details, proprietary game assemblies, decompiled dumps, generated wrappers, and game assets.
