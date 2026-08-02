@@ -6,9 +6,8 @@ The inspected networking path can accept a Steam P2P connection and let FishNet 
 
 ## Research package
 
-- [Technical security report](reports/schedule-i-unauthenticated-p2p-rpc-abuse.md)
+- [Security write-up](reports/schedule-i-unauthenticated-p2p-rpc-abuse.md)
 - [Streamer incident clip](evidence/streamer-incident.mp4)
-- [Clip provenance and limitations](evidence/README.md)
 
 The clip visually corroborates attacker-controlled promotional messages rendered through native-looking world-space NPC dialogue. It does not independently prove the reported balance change or establish the exact connection path.
 
